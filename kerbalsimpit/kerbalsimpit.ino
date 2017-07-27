@@ -68,26 +68,44 @@ void setup()
     while (!mySimpit.init())
         ;
 
-    mySimpit.inboundHandler(altitudeHandler);
+    mySimpit.inboundHandler(messageHandler);
     mySimpit.registerChannel(ALTITUDE_MESSAGE);
+    mySimpit.registerChannel(VELOCITY_MESSAGE);
     lcd.clear();
 }
 
-void altitudeHandler(byte messageType, byte message[], byte messageSize)
+void messageHandler(byte messageType, byte message[], byte messageSize)
 {
     switch (messageType)
     {
-    case ALTITUDE_MESSAGE:
-        if (messageSize == sizeof(altitudeMessage))
+        case ALTITUDE_MESSAGE:
         {
-            altitudeMessage myAltitude;
-            myAltitude = parseAltitude(message);
-            lcd.setCursor(0, 0);
-            lcd.print("ALT ");
-            lcd.setCursor(5, 0);
-            //float seaLevel = myAltitude.sealevel;
-            int trimmedAlt = (int)myAltitude.sealevel;
-            lcd.print(trimmedAlt);
+            if (messageSize == sizeof(altitudeMessage))
+            {
+                altitudeMessage myAltitude;
+                myAltitude = parseAltitude(message);
+                lcd.setCursor(0, 0);
+                lcd.print("ALT ");
+                lcd.setCursor(4, 0);
+                //float seaLevel = myAltitude.sealevel;
+                // int trimmedAlt = (int)myAltitude.sealevel;
+                lcd.print(myaltitude.sealevel);
+            }
+            break;
+        }
+
+        case VELOCITY_MESSAGE:
+        {
+            if (messageSize == sizeof(velocityMessage))
+            {
+                velocityMessage myVel;
+                myVel = parseVelocity(message);
+                lcd.setCursor(0, 1);
+                lcd.print("VO ");
+                lcd.setCursor(3, 1);
+                lcd.print(myVel.orbital);
+            }
+            break;
         }
     }
 }
