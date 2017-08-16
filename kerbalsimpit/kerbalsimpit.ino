@@ -3,14 +3,25 @@
 
 #include <KerbalSimpit.h>
 #include <PayloadStructs.h>
+// #include "libraries/MaxUtil.h"
+#include <LedControl.h>
+
+// using namespace MaxUtil;
+
+// LedControl
+//                        MOSI              MISO              SCK             SS(Slave)   SS(Master)
+// Mega1280 or Mega2560	  51 or ICSP-4	    50 or ICSP-1	  52 or ICSP-3	  53	        -
+// Uno/ProMini         	  11 or ICSP-4	    12 or ICSP-1	  13 or ICSP-3	  53	        -
+
+// MAX7219 digit indices are (left-to-right) 87654321
+// LedControl readjusts the idices to be 0-indexed (76543210)
+// MAX7219 Defines
+#define MAX_CS_PIN 6
+#define NUM_DISPLAYS 1
+
+LedControl lc = LedControl(MAX_CS_PIN, NUM_DISPLAYS);
 
 KerbalSimpit mySimpit(Serial);
-
-/*******************************************************
-
-This program will test the LCD panel and the buttons
-
-********************************************************/
 
 // select the pins used on the LCD panel
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
@@ -61,52 +72,71 @@ int read_LCD_buttons()
 
 void setup()
 {
-    lcd.begin(16, 2); // start the library
-    lcd.setCursor(0, 0);
-    lcd.print("Kerbal Simpit init"); // print a simple message
+    for (int i = 0; i < NUM_DISPLAYS; i++)
+    {
+        lc.shutdown(i, false);
+        lc.clearDisplay(i);
+        lc.setIntensity(i, 8);
+    }
+    // char test[] = {' ', ' ', '-', '4', 'a', '6', '7', '8'};
+    char test[] = {'a', 'r', 'd', 'u', 'i', 'n', 'o', ' '};
+    displayChar(0, test);
+
     Serial.begin(115200);
     while (!mySimpit.init())
         ;
 
+    lc.clearDisplay(0);
+
+    lcd.begin(16, 2); // start the library
+    lcd.setCursor(0, 0);
+    lcd.print("Kerbal Simpit init"); // print a simple message
+    lcd.clear();
+
     mySimpit.inboundHandler(messageHandler);
     mySimpit.registerChannel(ALTITUDE_MESSAGE);
     mySimpit.registerChannel(VELOCITY_MESSAGE);
-    lcd.clear();
+
+    // LEDCONROL MAX7219
+
 }
 
 void messageHandler(byte messageType, byte message[], byte messageSize)
 {
     switch (messageType)
     {
-        case ALTITUDE_MESSAGE:
+    case ALTITUDE_MESSAGE:
+    {
+        if (messageSize == sizeof(altitudeMessage))
         {
-            if (messageSize == sizeof(altitudeMessage))
-            {
-                altitudeMessage myAltitude;
-                myAltitude = parseAltitude(message);
-                lcd.setCursor(0, 0);
-                lcd.print("ALT ");
-                lcd.setCursor(4, 0);
-                //float seaLevel = myAltitude.sealevel;
-                // int trimmedAlt = (int)myAltitude.sealevel;
-                lcd.print(myaltitude.sealevel);
-            }
-            break;
+            altitudeMessage myAltitude;
+            myAltitude = parseAltitude(message);
+            lcd.setCursor(0, 0);
+            lcd.print("ALT ");
+            lcd.setCursor(4, 0);
+            //float seaLevel = myAltitude.sealevel;
+            int trimmedAlt = (int)myAltitude.sealevel;
+            lcd.print(myAltitude.sealevel);
+            String altString = "";
+            altString += trimmedAlt;
+            displayChar(0, altString);
         }
+        break;
+    }
 
-        case VELOCITY_MESSAGE:
+    case VELOCITY_MESSAGE:
+    {
+        if (messageSize == sizeof(velocityMessage))
         {
-            if (messageSize == sizeof(velocityMessage))
-            {
-                velocityMessage myVel;
-                myVel = parseVelocity(message);
-                lcd.setCursor(0, 1);
-                lcd.print("VO ");
-                lcd.setCursor(3, 1);
-                lcd.print(myVel.orbital);
-            }
-            break;
+            velocityMessage myVel;
+            myVel = parseVelocity(message);
+            lcd.setCursor(0, 1);
+            lcd.print("VO ");
+            lcd.setCursor(3, 1);
+            lcd.print(myVel.orbital);
         }
+        break;
+    }
     }
 }
 
@@ -115,49 +145,67 @@ void loop()
     mySimpit.update();
 }
 
-/*
-void loop()
+// LED
+
+void displayNumber(int addr, byte data[])
 {
- lcd.setCursor(9,1);            // move cursor to second line "1" and 9 spaces over
- lcd.print(millis()/1000);      // display seconds elapsed since power-up
-
-
- lcd.setCursor(0,1);            // move to the begining of the second line
- lcd_key = read_LCD_buttons();  // read the buttons
-
- switch (lcd_key)               // depending on which button was pushed, we perform an action
- {
-   case btnRIGHT:
-     {
-     lcd.print("RIGHT ");
-     break;
-     }
-   case btnLEFT:
-     {
-     lcd.print(adc_key_in);
-     lcd.print(" v");
-     break;
-     }
-   case btnUP:
-     {
-     lcd.print("UP    ");
-     break;
-     }
-   case btnDOWN:
-     {
-     lcd.print("DOWN  ");
-     break;
-     }
-   case btnSELECT:
-     {
-     lcd.print("SELECT");
-     break;
-     }
-     case btnNONE:
-     {
-     lcd.print("TEST  ");
-     break;
-     }
- }
+    lc.clearDisplay(addr);
+    for (int i = 0; i < 8; i++)
+    {
+        lc.setDigit(addr, i, data[i], false);
+    }
 }
-*/
+
+void displayNumber(int addr, long value)
+{
+    byte testDisplay[8];
+    convertToDigits(testDisplay, value);
+    displayNumber(addr, testDisplay);
+}
+
+void displayChar(int addr, String data)
+{
+    lc.clearDisplay(addr);
+    int maxLength = 8;
+    int length = data.length();
+
+    if (length > maxLength)
+    {
+        // do something
+        return;
+    }
+
+    char charArray[length];
+    data.toCharArray(charArray, length);
+    // strncpy(charArray, data.c_str(), stringLength);
+
+    int firstIndex = 7 - length;
+    for (int digit = 0; digit < length; digit++)
+    {
+        lc.setChar(addr, digit, data[length - 1 - digit], false);
+    }
+}
+
+// Simple method for displaying char[8] arrays
+void displayChar(int addr, char data[])
+{
+    for (int digit = 0; digit < 8; digit++)
+    {
+        lc.setChar(addr, 7 - digit, data[digit], false);
+    }
+}
+
+void convertToDigits(byte output[], unsigned long value)
+{
+    unsigned long digitsCounter = value;
+
+    for (int i = 0; i < 8; i++)
+    {
+        output[i] = digitsCounter % 10;
+
+        // if (digitsCounter < pow(10, i)) // 1, 10, 100, 1000....
+        //     output[i] = 0x0F;          // set the data to something out of range so the chip doesn't display anything on that digit -- set to 0x00 to pad with 0s (or any other valid value)
+
+        digitsCounter /= 10;
+    }
+}
